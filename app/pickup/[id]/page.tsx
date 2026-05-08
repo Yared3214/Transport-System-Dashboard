@@ -117,7 +117,7 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
     }
   
     setSaving(false);
-    router.push('/dashboard'); // Navigate back to dashboard
+    router.push('/'); // Navigate back to dashboard
   };
 
   // Filtering Logic

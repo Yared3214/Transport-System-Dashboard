@@ -27,7 +27,7 @@ export async function proxy(request: NextRequest) {
   console.log ({ user });
 
   // Redirect non-authenticated users away from protected routes
-  if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
+  if (!user && request.nextUrl.pathname === "/") {
     return NextResponse.redirect(new URL("/auth", request.url));
   }
 
@@ -40,7 +40,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if(user && (request.nextUrl.pathname === "/auth" || request.nextUrl.pathname === "/login")) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/", request.url));
   }
   
   return response;

@@ -37,7 +37,7 @@ export default function EmailPassword() {
             if (mode === 'signin') {
                 console.log({ data });
                 router.refresh();
-                router.push('/dashboard');
+                router.push('/');
             } else {
                 setError("Verification email sent. Check your inbox.");
                 setLoading(false);
