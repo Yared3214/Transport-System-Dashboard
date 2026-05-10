@@ -7,8 +7,8 @@ import { useState } from "react";
 
 
 export default function EmailPassword() {
-    const [mode, setMode] = useState("signup");
-    const [prevMode, setPrevMode] = useState("signin");
+    const [mode, setMode] = useState("signin");
+    const [prevMode, setPrevMode] = useState("signup");
     const [loading, setLoading] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
