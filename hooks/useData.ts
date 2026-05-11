@@ -6,6 +6,10 @@ const useData = (activeTab: string) => {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [offices, setOffices] = useState<any[]>([]);
+    const [user, setUser] = useState<any | null>({
+        role: '',
+        email: '',
+    });
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -26,6 +30,9 @@ const useData = (activeTab: string) => {
                     break;
                 case 'drivers':
                     supabaseQuery = supabase.from('drivers').select('*, locations(location_name)');
+                    break;
+                case 'access-requests':
+                    supabaseQuery = supabase.from('profiles').select('*').eq('is_approved', false);
                     break;
                 default:
                     console.warn(`No query defined for tab: ${activeTab}`);
@@ -66,7 +73,25 @@ const useData = (activeTab: string) => {
         }
     },[])
 
-    return { data, offices, fetchData, fetchOfficeLocations, loading, error };
+    const fetchProfile = useCallback(async(userId: string) => {
+        setLoading(true)
+        setError(null)
+
+        try {
+            const { data, error: supabaseError } = await supabase.from('profiles').select('role, email').eq('id', userId).single();
+
+            if (supabaseError) throw supabaseError;
+
+            setUser(data || { role: '', email: '' })
+        } catch (err: any) {
+            console.error("Fetch Error:", err);
+            setError(err.message || 'An error occurred while fetching user role')
+        } finally {
+            setLoading(false);
+        }
+    },[])
+
+    return { data, offices, user, fetchData, fetchOfficeLocations, fetchProfile, loading, error };
 };
 
 export default useData;

@@ -1,13 +1,14 @@
 "use client"
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   Users, Truck, MapPin, Building2, Plus, 
-  Search, Filter,
+  Search,
   ChevronRight,
   Menu,
   X,
   LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 import { OfficeLocationsView } from '@/components/dashboard/OfficeLocations';
 import { EmployeesView } from '@/components/dashboard/EmployeesView';
@@ -20,12 +21,14 @@ import { DeleteConfirmModal } from '@/components/dashboard/SmartDeleteModal';
 import { useRouter } from 'next/navigation';
 import { PickupPointsView } from '@/components/dashboard/PickupPointsView';
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client';
+import AccessRequestsView from '@/components/dashboard/AccessRequestsView';
 
 const tableMap = {
   location: 'locations',
   pickup: 'pickup_points',
   employee: 'employees',
-  driver: 'drivers'
+  driver: 'drivers',
+  'access-request': 'profiles', // Assuming access requests are stored in the profiles table
 };
 
 const AdminLogisticsDashboard = () => {
@@ -53,10 +56,10 @@ const AdminLogisticsDashboard = () => {
     router.push(`/pickup/${id}`);
   };
 
-  const [deleteTarget, setDeleteTarget] = useState<{id: string, name: string, type: 'location' | 'pickup' | 'employee' | 'driver'; } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{id: string, name: string, type: 'location' | 'pickup' | 'employee' | 'driver' | 'access-request'; } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const { fetchData, fetchOfficeLocations, loading, data, offices } = useData(activeTab);
+  const { fetchData, fetchOfficeLocations, fetchProfile, loading, data, offices, user } = useData(activeTab);
 
   useEffect(() => {
     fetchData();
@@ -65,6 +68,7 @@ const AdminLogisticsDashboard = () => {
   useEffect(() => {
     fetchOfficeLocations();
   }, [fetchOfficeLocations]);
+
 
   // --- 2. CREATE / UPDATE ---
   const handleSave = async (formData: any) => {
@@ -109,7 +113,38 @@ const AdminLogisticsDashboard = () => {
     setIsDeleting(false);
   };
 
+  const handleApproveAccessRequest = async (id: string) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_approved: true, role: 'admin' }) // Or 'driver' based on your choice
+      .eq('id', id);
+
+    if (error) {
+      alert("Error approving access request: " + error.message);
+    } else {
+      // Trigger a re-fetch of your data to update the UI
+      await fetchData();
+      alert("Access request approved successfully!");
+    }
+  }
+
   const supabaseBrowser = getSupabaseBrowserClient();
+  const getUserId = useCallback(async () => {
+    const { data: { user } } = await supabaseBrowser.auth.getUser();
+    return user?.id || '';
+  },[supabaseBrowser.auth]);
+
+  useEffect(() => {
+    const initializeProfile = async () => {
+      const userId = await getUserId();
+      if (userId) {
+        await fetchProfile(userId);
+      }
+    };
+
+    initializeProfile();
+  }, [fetchProfile, getUserId]);
+  
 
   const handleSignout = async () => {
     await supabaseBrowser.auth.signOut();
@@ -186,23 +221,26 @@ const AdminLogisticsDashboard = () => {
         </div>
 
         <nav className="flex-1 space-y-1">
-          {[
+            {[
             { id: 'locations', label: 'Office Locations', icon: <Building2 size={18}/> },
             { id: 'pickup-points', label: 'Pickup Points', icon: <MapPin size={18}/> },
             { id: 'employees', label: 'Employees', icon: <Users size={18}/> },
             { id: 'drivers', label: 'Drivers', icon: <Truck size={18}/> },
-          ].map((item) => (
+            ...(user.role === 'super-admin' 
+              ? [{ id: 'access-requests', label: 'Access Requests', icon: <ShieldCheck size={18}/> }] 
+              : []),
+            ].map((item) => (
             <SidebarItem 
               key={item.id}
               icon={item.icon} 
               label={item.label} 
               active={activeTab === item.id} 
               onClick={() => {
-                setActiveTab(item.id);
-                setIsSidebarOpen(false); // Close on mobile after selection
+              setActiveTab(item.id);
+              setIsSidebarOpen(false); // Close on mobile after selection
               }} 
             />
-          ))}
+            ))}
         </nav>
 
         {/* --- BOTTOM SECTION (System Info & Auth) --- */}
@@ -256,10 +294,30 @@ const AdminLogisticsDashboard = () => {
           <div className="flex items-center gap-2 lg:gap-4">
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <p className="text-xs font-bold text-white leading-none">Admin</p>
-                <p className="text-[10px] text-slate-500 uppercase font-bold mt-1">Super</p>
+                <div className="flex items-center justify-end gap-2">
+                  {/* User Email - Displayed subtly */}
+                  <p className="text-[11px] font-medium text-slate-400 lowercase tracking-tight">
+                    {user.email}
+                  </p>
+                  <p className="text-xs font-black text-white leading-none uppercase">
+                    {user.role === 'super-admin' ? 'Super Admin' : 'Admin'}
+                  </p>
+                </div>
+      
+                {/* System Status / Role Label */}
+                <div className="flex items-center justify-end gap-1.5 mt-1">
+                  <div className="w-1 h-1 bg-indigo-500 rounded-full animate-pulse" />
+                  <p className="text-[9px] text-indigo-400/80 uppercase font-black tracking-[0.2em]">
+                    Verified Identity
+                  </p>
+                </div>
               </div>
-              <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border-2 border-slate-800" />
+    
+              {/* Avatar */}
+              <div className="relative group cursor-pointer">
+                <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border-2 border-slate-800 shadow-lg group-hover:shadow-indigo-500/20 transition-all" />
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-slate-950 rounded-full" title="Online" />
+              </div>
             </div>
           </div>
         </header>
@@ -279,15 +337,17 @@ const AdminLogisticsDashboard = () => {
               <p className="text-slate-400 text-xs lg:text-sm mt-1">Manage system-wide records</p>
             </div>
             
-            <button 
-              onClick={() => {
-                if(activeTab === 'pickup-points') handleCreateNew();
-                else openModal(getModalTypeFromTab());              
-              }}
-              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-600/10 transition-all active:scale-95"
-            >
-              <Plus size={18} /> Create New
-            </button>
+            {activeTab !== 'access-requests' && (
+              <button 
+                onClick={() => {
+                  if(activeTab === 'pickup-points') handleCreateNew();
+                  else openModal(getModalTypeFromTab());              
+                }}
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-600/10 transition-all active:scale-95"
+              >
+                <Plus size={18} /> Create New
+              </button>
+)}
           </div>
 
           {loading ? (
@@ -299,6 +359,7 @@ const AdminLogisticsDashboard = () => {
                {activeTab === 'locations' && <OfficeLocationsView data={data} onEdit={(d) => openModal('location', d)} onDelete={setDeleteTarget}/>}
                {activeTab === 'employees' && <EmployeesView data={data} onEdit={(d) => openModal('employee', d)} onDelete={setDeleteTarget}/>}
                {activeTab === 'drivers' && <DriversView data={data} onEdit={(d) => openModal('driver', d)} onDelete={setDeleteTarget}/>}
+               {activeTab === 'access-requests' && (<AccessRequestsView data={data} onApprove={handleApproveAccessRequest} onDeny={setDeleteTarget}/>)}
             </div>
           )}
         </div>

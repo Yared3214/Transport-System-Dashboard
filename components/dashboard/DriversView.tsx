@@ -7,7 +7,7 @@ export const DriversView = ({ data, onEdit, onDelete }: {
   onDelete: Dispatch<SetStateAction<{
     id: string;
     name: string;
-    type: "location" | "pickup" | "employee" | "driver";
+    type: "location" | "pickup" | "employee" | "driver" | "access-request";
 } | null>> }) => {
   const [search, setSearch] = useState("");
   const [officeFilter, setOfficeFilter] = useState("All");
