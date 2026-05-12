@@ -6,10 +6,13 @@ import {
   MapPin, Save, Truck, Users, UserCheck, 
   ShieldCheck, 
   Loader2,
-  Search
+  Search,
+  Send,
+  Clock
 } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
+import { sendRouteToTelegram } from '@/lib/telegram';
 
 const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: string }> }) => {
   const params = use(paramsPromise); 
@@ -20,6 +23,7 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
 
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
+  const [sendingTelegram, setSendingTelegram] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   // State Management
@@ -27,6 +31,11 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
     name: '',
     location_id: '',
     driver_id: '',
+    type: 'entry', // 'entry' | 'exit'
+    shift: 'AM',   // 'AM' | 'PM'
+    time: '08:00',
+    is_weekend: false,
+    overtime_type: 'normal' // 'normal' | 'saturday' | 'sunday'
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [driverIds, setDriverIds] = useState<any[]>([]);
@@ -67,6 +76,10 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
             name: pickup.name,
             location_id: pickup.location_id,
             driver_id: pickup.driver_id,
+            type: pickup.type,
+            shift: pickup.shift,
+            time: pickup.time,
+            overtime_type: pickup.overtime_type
           });
           setSelectedIds(pickup.employees.map((e: any) => e.id));
         }
@@ -89,7 +102,11 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
         ...(isEdit ? { id: id } : {}),
         name: formData.name,
         location_id: formData.location_id,
-        driver_id: formData.driver_id
+        driver_id: formData.driver_id,
+        type: formData.type,
+        shift: formData.shift,
+        time: formData.time,
+        overtime_type: formData.overtime_type
       })
       .select()
       .single();
@@ -119,6 +136,31 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
   
     setSaving(false);
     router.push('/'); // Navigate back to dashboard
+  };
+
+  const handleTelegramBroadcast = async () => {
+    setSendingTelegram(true);
+    
+    const driverName = allDrivers.find(d => d.id === formData.driver_id)?.full_name || "Unassigned";
+    const staffNames = selectedStaffData.map(s => s.full_name);
+  
+    const success = await sendRouteToTelegram({
+      routeName: formData.name || "Unnamed Route",
+      driverName,
+      staffNames,
+      type: formData.type,
+      overtime_type: formData.overtime_type,
+      time: formData.time,
+      shift: formData.shift
+    });
+  
+    if (success) {
+      alert("🚀 Route intel broadcasted to Telegram!");
+    } else {
+      alert("❌ Broadcast failed. Check connection.");
+    }
+    
+    setSendingTelegram(false);
   };
 
   const handleDiscard = () => {
@@ -265,6 +307,34 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                       )}
                     </div>
                   </div>
+                  {/* TELEGRAM BROADCAST ACTION */}
+                  <div className="mt-8 pt-6 border-t border-slate-800/60">
+                    <button
+                      onClick={handleTelegramBroadcast}
+                      disabled={sendingTelegram || !formData.name || selectedIds.length === 0}
+                      className="w-full relative group overflow-hidden rounded-2xl p-px disabled:opacity-50 disabled:grayscale transition-all"
+                    >
+                      {/* Animated Gradient Border */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 animate-gradient-x group-hover:scale-105 transition-transform duration-500" />
+    
+                      <div className="relative bg-slate-900 rounded-[calc(1rem-1px)] p-4 flex items-center justify-center gap-3 transition-colors group-hover:bg-slate-900/80">
+                        {sendingTelegram ? (
+                          <Loader2 size={18} className="animate-spin text-blue-400" />
+                        ) : (
+                          <Send size={18} className="text-blue-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                        )}
+      
+                        <div className="text-left">
+                          <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] leading-none">Broadcast Intel</p>
+                          <p className="text-xs font-bold text-white mt-1">Post to Telegram Channel</p>
+                        </div>
+                      </div>
+                    </button>
+  
+                    <p className="text-[9px] text-slate-500 text-center mt-3 font-medium italic">
+                      * This will notify all personnel on the official channel
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -316,6 +386,72 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
               </div>
             </div>
           </section>
+
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            {/* Entry/Exit Toggle */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Movement</label>
+              <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-800">
+                {['entry', 'exit'].map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setFormData({...formData, type: t})}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      formData.type === t ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {t.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Shift Toggle */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Shift</label>
+              <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-800">
+                {['AM', 'PM'].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setFormData({...formData, shift: s})}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      formData.shift === s ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time Picker */}
+            <div className="space-y-2 col-span-1">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Scheduled Time</label>
+              <div className="relative">
+                <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="time" 
+                  value={formData.time}
+                  onChange={(e) => setFormData({...formData, time: e.target.value})}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Weekend/Overtime Toggle */}
+            <div className="space-y-2 col-span-1">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Day Type</label>
+              <select 
+                value={formData.overtime_type}
+                onChange={(e) => setFormData({...formData, overtime_type: e.target.value})}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+              >
+                <option value="normal">Weekday (Normal)</option>
+                <option value="saturday">Saturday Overtime</option>
+                <option value="sunday">Sunday Overtime</option>
+              </select>
+            </div>
+          </div>
 
           {/* Section 2: Driver Assignment */}
           <section className={`transition-all duration-500 ${formData.location_id ? 'opacity-100' : 'opacity-40 grayscale pointer-events-none'}`}>
