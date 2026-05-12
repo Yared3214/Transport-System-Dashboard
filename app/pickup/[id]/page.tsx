@@ -20,6 +20,7 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
 
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   // State Management
   const [formData, setFormData] = useState<any>({
@@ -120,6 +121,21 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
     router.push('/'); // Navigate back to dashboard
   };
 
+  const handleDiscard = () => {
+    const isDirty = formData.name || formData.location_id || formData.driver_id || selectedIds.length > 0;
+    
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+    } else {
+      router.push('/');
+    }
+  };
+  
+  const confirmDiscard = () => {
+    setShowDiscardConfirm(false);
+    router.push('/');
+  };
+
   // Filtering Logic
   const filteredDrivers = useMemo(() => {
     return allDrivers
@@ -169,7 +185,9 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <button className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-900 text-slate-400 font-bold text-[10px] rounded-xl transition-all uppercase tracking-widest">
+          <button 
+          onClick={handleDiscard}
+          className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-900 text-slate-400 font-bold text-[10px] rounded-xl transition-all uppercase tracking-widest">
             Discard
           </button>
           <button 
@@ -407,6 +425,40 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
           </section>
         </div>
       </div>
+      {/* DISCARD CONFIRMATION MODAL */}
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-[#060608]/80 backdrop-blur-md" onClick={() => setShowDiscardConfirm(false)} />
+    
+          {/* Modal Content */}
+          <div className="relative bg-slate-900 border border-slate-800 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl shadow-red-500/10">
+            <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500 mb-6">
+              <ArrowLeft size={28} />
+            </div>
+      
+            <h3 className="text-2xl font-black text-white tracking-tight uppercase mb-2">Abort Configuration?</h3>
+            <p className="text-slate-400 text-sm leading-relaxed mb-8">
+              You are about to discard all unsaved route intel. This action is irreversible and the manifest data will be purged from the current session.
+            </p>
+      
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => setShowDiscardConfirm(false)}
+                className="px-6 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[10px] rounded-2xl transition-all uppercase tracking-widest"
+              >
+                Resume Work
+              </button>
+              <button 
+                onClick={confirmDiscard}
+                className="px-6 py-4 bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] rounded-2xl shadow-lg shadow-red-600/20 transition-all uppercase tracking-widest"
+              >
+                Confirm Abort
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
