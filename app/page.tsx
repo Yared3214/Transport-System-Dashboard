@@ -222,7 +222,9 @@ const AdminLogisticsDashboard = () => {
 
         <nav className="flex-1 space-y-1">
             {[
-            { id: 'locations', label: 'Office Locations', icon: <Building2 size={18}/> },
+              ...(user.role === 'super-admin'
+                ? [{ id: 'locations', label: 'Office Locations', icon: <Building2 size={18}/> }]
+                : []),
             { id: 'pickup-points', label: 'Pickup Points', icon: <MapPin size={18}/> },
             { id: 'employees', label: 'Employees', icon: <Users size={18}/> },
             { id: 'drivers', label: 'Drivers', icon: <Truck size={18}/> },
