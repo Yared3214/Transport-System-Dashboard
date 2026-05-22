@@ -1,8 +1,9 @@
-import { Building2, ChevronLeft, ChevronRight, Edit2, Filter, Search, Trash2, Users, X } from "lucide-react";
-import { Dispatch, SetStateAction, useMemo, useState } from "react";
+import useEmployees from "@/hooks/useEmployees";
+import { useEmployeesStore } from "@/store/useEmployeesStore";
+import { Building2, ChevronLeft, ChevronRight, Edit2, Search, Trash2 } from "lucide-react";
+import { Dispatch, SetStateAction, useEffect, useMemo, useState } from "react";
 
-export const EmployeesView = ({ data, onEdit, onDelete }: { 
-  data: any; 
+export const EmployeesView = ({ onEdit, onDelete }: { 
   onEdit: (data: any) => void; 
   onDelete: Dispatch<SetStateAction<{
       id: string;
@@ -13,6 +14,14 @@ export const EmployeesView = ({ data, onEdit, onDelete }: {
     const [search, setSearch] = useState("");
     const [officeFilter, setOfficeFilter] = useState("All");
     const [currentPage, setCurrentPage] = useState(1);
+
+    const { fetchEmployees, error, loading } = useEmployees();
+
+    const employees = useEmployeesStore(state => state.employees);
+
+    useEffect(() => {
+      fetchEmployees();
+    },[fetchEmployees])
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
@@ -26,17 +35,17 @@ export const EmployeesView = ({ data, onEdit, onDelete }: {
 
     // 1. Get unique offices from the data for the dropdown
     const offices = useMemo(() => {
-      const unique = Array.from(new Set(data.map((e: any) => e.locations?.location_name).filter(Boolean)));
+      const unique = Array.from(new Set(employees.map((e: any) => e.locations?.location_name).filter(Boolean)));
       return ["All", ...unique];
-    }, [data]);
+    }, [employees]);
 
     const filteredData = useMemo(() => {
-      return data.filter((emp: any) => {
+      return employees.filter((emp: any) => {
         const matchesSearch = emp.full_name?.toLowerCase().includes(search.toLowerCase());
         const matchesOffice = officeFilter === "All" || emp.locations?.location_name === officeFilter;
         return matchesSearch && matchesOffice;
       });
-    }, [data, search, officeFilter]);
+    }, [employees, search, officeFilter]);
 
     const itemsPerPage = 8;
     const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -45,7 +54,11 @@ export const EmployeesView = ({ data, onEdit, onDelete }: {
     const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
 
     return (
-      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div>
+       {loading ? (
+            <div className="flex items-center justify-center h-64 text-indigo-400">Loading...</div>
+          ) : ( 
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       {/* TOOLBAR: Stacks on mobile */}
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-900/40 border border-slate-800 p-4 rounded-[1.5rem] lg:rounded-[2rem] backdrop-blur-md">
@@ -206,5 +219,7 @@ export const EmployeesView = ({ data, onEdit, onDelete }: {
         )}
       </div>
     </div>
+          )}
+      </div>
 );
 }

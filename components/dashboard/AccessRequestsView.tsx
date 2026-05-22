@@ -1,43 +1,58 @@
 "use client"
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, X, Mail, Calendar, UserCheck } from "lucide-react";
 import { ActionStatusModal } from "./ActionStatusModal"; // Import the modal above
+import useRequests from "@/hooks/useRequests";
+import { useRequestsStore } from "@/store/useRequestsStore";
 
-export default function AccessRequestsView({ data, onApprove, onDeny }: any) {
+export default function AccessRequestsView({ onDeny }: any) {
   const [modal, setModal] = useState<{
+    id: string;
     isOpen: boolean;
     status: 'loading' | 'success' | 'error';
     message: string;
   }>({
+    id: '',
     isOpen: false,
     status: 'loading',
     message: ''
   });
 
+  const { fetchData, approveRequest, error, loading } = useRequests();
+
+  const requests = useRequestsStore((state) => state.requests);
+  const removeRequest = useRequestsStore((state) => state.removeRequest);
+
+  useEffect(() => {
+    if(requests.length === 0) fetchData();
+  },[fetchData, requests.length]);
+
   const handleApprove = async (id: string, email: string) => {
     setModal({ 
+      id,
       isOpen: true, 
       status: 'loading', 
       message: `Provisioning security credentials for ${email}...` 
     });
 
-    try {
-      await onApprove(id);
+      await approveRequest(id);
       setModal({ 
+        id,
         isOpen: true, 
         status: 'success', 
         message: 'Account has been promoted to Admin. The user can now access the dashboard.' 
       });
-    } catch (err) {
-      setModal({ 
-        isOpen: true, 
-        status: 'error', 
-        message: 'Database synchronization failed. Please check system logs.' 
-      });
-    }
   };
 
-  if (!data || data.length === 0) {
+  if(error) {
+    setModal({ 
+      id: '',
+      isOpen: true, 
+      status: 'error', 
+      message: 'Database synchronization failed. Please check system logs.' 
+    });
+  }
+  if (!requests || requests.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 bg-slate-900/20 border border-dashed border-slate-800 rounded-[2rem]">
         <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-slate-700 mb-4">
@@ -49,16 +64,25 @@ export default function AccessRequestsView({ data, onApprove, onDeny }: any) {
   }
 
   return (
-    <>
+    <div>
+      {loading ? (
+            <div className="flex items-center justify-center h-64 text-indigo-400">Loading...</div>
+          ) : (
+      <>
       <ActionStatusModal 
         isOpen={modal.isOpen}
         status={modal.status}
         message={modal.message}
-        onClose={() => setModal(prev => ({ ...prev, isOpen: false }))}
+        onClose={() => {
+          if(modal.status === 'success') {
+            removeRequest(modal.id);
+          }
+          setModal(prev => ({ ...prev, isOpen: false }))
+        }}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {data.map((request: any) => (
+        {requests.map((request: any) => (
           <div key={request.id} className="bg-slate-900/40 border border-slate-800/60 p-6 rounded-[2rem] backdrop-blur-sm group hover:border-indigo-500/30 transition-all">
             {/* ... rest of your card UI ... */}
             <div className="flex items-start justify-between mb-6">
@@ -97,5 +121,7 @@ export default function AccessRequestsView({ data, onApprove, onDeny }: any) {
         ))}
       </div>
     </>
+          )}
+    </div>
   );
 }

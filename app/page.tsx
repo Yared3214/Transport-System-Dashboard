@@ -59,7 +59,7 @@ const AdminLogisticsDashboard = () => {
   const [deleteTarget, setDeleteTarget] = useState<{id: string, name: string, type: 'location' | 'pickup' | 'employee' | 'driver' | 'access-request'; } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const { fetchData, fetchOfficeLocations, fetchProfile, loading, data, offices, user } = useData(activeTab);
+  const { fetchData, fetchOfficeLocations, fetchProfile, data, offices, user } = useData(activeTab);
 
   useEffect(() => {
     fetchData();
@@ -112,21 +112,6 @@ const AdminLogisticsDashboard = () => {
     }
     setIsDeleting(false);
   };
-
-  const handleApproveAccessRequest = async (id: string) => {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_approved: true, role: 'admin' }) // Or 'driver' based on your choice
-      .eq('id', id);
-
-    if (error) {
-      alert("Error approving access request: " + error.message);
-    } else {
-      // Trigger a re-fetch of your data to update the UI
-      await fetchData();
-      alert("Access request approved successfully!");
-    }
-  }
 
   const supabaseBrowser = getSupabaseBrowserClient();
   const getUserId = useCallback(async () => {
@@ -351,19 +336,14 @@ const AdminLogisticsDashboard = () => {
               </button>
 )}
           </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center h-64 text-indigo-400">Loading...</div>
-          ) : (
             <div className="min-w-full inline-block align-middle">
                {/* Content Views - Ensure they are wrapped in overflow-x-auto internally */}
-               {activeTab === 'pickup-points' && <PickupPointsView data={data} onEdit={handleEdit} onDelete={setDeleteTarget}/>}
-               {activeTab === 'locations' && <OfficeLocationsView data={data} onEdit={(d) => openModal('location', d)} onDelete={setDeleteTarget}/>}
-               {activeTab === 'employees' && <EmployeesView data={data} onEdit={(d) => openModal('employee', d)} onDelete={setDeleteTarget}/>}
-               {activeTab === 'drivers' && <DriversView data={data} onEdit={(d) => openModal('driver', d)} onDelete={setDeleteTarget}/>}
-               {activeTab === 'access-requests' && (<AccessRequestsView data={data} onApprove={handleApproveAccessRequest} onDeny={setDeleteTarget}/>)}
+               {activeTab === 'pickup-points' && <PickupPointsView onEdit={handleEdit} onDelete={setDeleteTarget}/>}
+               {activeTab === 'locations' && <OfficeLocationsView onEdit={(d) => openModal('location', d)} onDelete={setDeleteTarget}/>}
+               {activeTab === 'employees' && <EmployeesView onEdit={(d) => openModal('employee', d)} onDelete={setDeleteTarget}/>}
+               {activeTab === 'drivers' && <DriversView onEdit={(d) => openModal('driver', d)} onDelete={setDeleteTarget}/>}
+               {activeTab === 'access-requests' && (<AccessRequestsView data={data} onDeny={setDeleteTarget}/>)}
             </div>
-          )}
         </div>
       </main>
     </div>

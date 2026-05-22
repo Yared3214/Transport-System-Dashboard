@@ -1,18 +1,31 @@
+import useOffices from "@/hooks/useOffices";
+import { useOfficesStore } from "@/store/useOfficesStore";
 import { Building2, Edit2, Trash2, Truck, Users } from "lucide-react";
-import { Dispatch, SetStateAction } from "react";
+import { Dispatch, SetStateAction, useEffect } from "react";
 
-export const OfficeLocationsView = ({ data, onEdit, onDelete }: { 
-  data: any; 
+export const OfficeLocationsView = ({ onEdit, onDelete }: { 
   onEdit: (data: any) => void;
   onDelete: Dispatch<SetStateAction<{
     id: string;
     name: string;
     type: "location" | "pickup" | "employee" | "driver" | "access-request";
 } | null>> }) => {
+
+  const { fetchOffices, error, loading } = useOffices();
+
+  const offices = useOfficesStore((state) => state.offices);
+
+  useEffect(() => {
+    fetchOffices();
+  },[fetchOffices]);
   
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-    {data.map((office: any, i: number) => (
+    <div>
+      {loading ? (
+        <div className="flex items-center justify-center h-64 text-indigo-400">Loading...</div>
+          ) : (
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    {offices.map((office: any, i: number) => (
       <div 
         key={i} 
         className="bg-slate-900 border border-slate-800 rounded-[2rem] p-5 md:p-6 hover:border-indigo-500/40 transition-all group relative overflow-hidden flex flex-col justify-between"
@@ -81,4 +94,6 @@ export const OfficeLocationsView = ({ data, onEdit, onDelete }: {
       </div>
     ))}
   </div>
+          )}
+    </div>
 );}

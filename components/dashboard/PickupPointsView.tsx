@@ -1,9 +1,9 @@
 import { ChevronLeft, ChevronRight, Edit2, MapPin, Search, Trash2 } from "lucide-react";
-import { Dispatch, SetStateAction, useMemo, useState } from "react";
-import { TableRow } from "./TableRow";
+import { Dispatch, SetStateAction, useEffect, useMemo, useState } from "react";
+import usePickupPoints from "@/hooks/usePickupPoints";
+import { usePickupPointsStore } from "@/store/usePickupPoints";
 
-export const PickupPointsView = ({ data, onEdit, onDelete }: { 
-  data: any; 
+export const PickupPointsView = ({ onEdit, onDelete }: {  
   onEdit: (id: string) => void; 
   onDelete: Dispatch<SetStateAction<{
       id: string;
@@ -14,6 +14,14 @@ export const PickupPointsView = ({ data, onEdit, onDelete }: {
     const [search, setSearch] = useState("");
     const [officeFilter, setOfficeFilter] = useState("All");
     const [currentPage, setCurrentPage] = useState(1);
+
+    const { fetchData } = usePickupPoints();
+
+    const pickupPoints = usePickupPointsStore((state) => state.pickupPoints);
+
+    useEffect(() => {
+      if (pickupPoints.length === 0) fetchData();
+    },[fetchData, pickupPoints.length]);
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
@@ -27,17 +35,17 @@ export const PickupPointsView = ({ data, onEdit, onDelete }: {
 
     // 1. Get unique offices from the data for the dropdown
     const offices = useMemo(() => {
-      const unique = Array.from(new Set(data.map((p: any) => p.locations?.location_name).filter(Boolean)));
+      const unique = Array.from(new Set(pickupPoints.map((p: any) => p.locations?.location_name).filter(Boolean)));
       return ["All", ...unique];
-    }, [data]);
+    }, [pickupPoints]);
 
     const filteredData = useMemo(() => {
-      return data.filter((pickup: any) => {
+      return pickupPoints.filter((pickup: any) => {
         const matchesSearch = pickup.name?.toLowerCase().includes(search.toLowerCase());
         const matchesOffice = officeFilter === "All" || pickup.locations?.location_name === officeFilter;
         return matchesSearch && matchesOffice;
       });
-    }, [data, search, officeFilter]);
+    }, [pickupPoints, search, officeFilter]);
 
     const itemsPerPage = 8;
     const totalPages = Math.ceil(filteredData.length / itemsPerPage);

@@ -11,8 +11,16 @@ import {
   Clock
 } from "lucide-react";
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
-import { sendRouteToTelegram } from '@/lib/telegram';
+// import { supabase } from '@/lib/supabase/client';
+// import { sendRouteToTelegram } from '@/lib/telegram';
+import { useRouteStore } from '@/store/useRouteStore';
+import { useRouteLogic } from '@/hooks/useRouteLogic';
+import { useOfficesStore } from '@/store/useOfficesStore';
+import { useDriversStore } from '@/store/useDriversStore';
+import { useEmployeesStore } from '@/store/useEmployeesStore';
+import useOffices from '@/hooks/useOffices';
+import useEmployees from '@/hooks/useEmployees';
+import useDrivers from '@/hooks/useDrivers';
 
 const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: string }> }) => {
   const params = use(paramsPromise); 
@@ -21,150 +29,47 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
   const router = useRouter();
   const isEdit = id !== 'new';
 
-  const [loading, setLoading] = useState(isEdit);
-  const [saving, setSaving] = useState(false);
-  const [sendingTelegram, setSendingTelegram] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-
-  // State Management
-  const [formData, setFormData] = useState<any>({
-    name: '',
-    location_id: '',
-    driver_id: '',
-    type: 'entry', // 'entry' | 'exit'
-    shift: 'AM',   // 'AM' | 'PM'
-    time: '08:00',
-    is_weekend: false,
-    overtime_type: 'normal' // 'normal' | 'saturday' | 'sunday'
-  });
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [driverIds, setDriverIds] = useState<any[]>([]);
-
-  const [allDrivers, setAllDrivers] = useState<any[]>([]);
-  const [allEmployees, setAllEmployees] = useState<any[]>([]);
-  const [offices, setOffices] = useState<any[]>([]);
   const [driverSearch, setDriverSearch] = useState("");
   const [passengerSearch, setPassengerSearch] = useState("");
 
+  const store = useRouteStore();
+  const offices = useOfficesStore(state => state.offices);
+  const drivers = useDriversStore(state => state.drivers);
+  const employees = useEmployeesStore(state => state.employees);
+
+  const { loadData, handleFinalize, handleTelegramBroadcast } = useRouteLogic(id, isEdit);
+  const { fetchOffices } = useOffices();
+  const { fetchEmployees } = useEmployees();
+  const { fetchDrivers } = useDrivers();
+
+  const reset = useRouteStore((state) => state.reset);
+
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      
-      // Fetch Offices, Drivers, and Employees in parallel
-      const [offRes, driRes, empRes, pickupRes] = await Promise.all([
-        supabase.from('locations').select('id, location_name'),
-        supabase.from('drivers').select('id, full_name, location_id'),
-        supabase.from('employees').select('id, full_name, location_id, pickup_id'),
-        supabase.from('pickup_points').select('driver_id')
-      ]);
-
-      if (driRes.data) setAllDrivers(driRes.data);
-      if (empRes.data) setAllEmployees(empRes.data);
-      if (offRes.data) setOffices(offRes.data);
-      if (pickupRes.data) setDriverIds(pickupRes.data.map((p: any) => p.driver_id));
-  
-      if (isEdit) {
-        // Fetch the specific pickup point data
-        const { data: pickup } = await supabase
-          .from('pickup_points')
-          .select(`*, employees(id)`)
-          .eq('id', id)
-          .single();
-  
-        if (pickup) {
-          setFormData({
-            name: pickup.name,
-            location_id: pickup.location_id,
-            driver_id: pickup.driver_id,
-            type: pickup.type,
-            shift: pickup.shift,
-            time: pickup.time,
-            overtime_type: pickup.overtime_type
-          });
-          setSelectedIds(pickup.employees.map((e: any) => e.id));
-        }
-      }
-      
-      // Set your lists in state here (assuming you have useState for them)
-      setLoading(false);
-    };
-  
     loadData();
-  }, [id, isEdit]);
+    return () => reset(); // Cleanup on unmount
+  }, [id, loadData, reset]);
 
-  const handleFinalize = async () => {
-    setSaving(true);
-    
-    // 1. Save the Pickup Point
-    const { data: pickup, error: pError } = await supabase
-      .from('pickup_points')
-      .upsert({
-        ...(isEdit ? { id: id } : {}),
-        name: formData.name,
-        location_id: formData.location_id,
-        driver_id: formData.driver_id,
-        type: formData.type,
-        shift: formData.shift,
-        time: formData.time,
-        overtime_type: formData.overtime_type
-      })
-      .select()
-      .single();
-  
-    if (pError) {
-      console.error(pError);
-      setSaving(false);
-      return;
-    }
-  
-    // 2. Clear old assignments for this pickup
-    // (Prevents ghost assignments if you removed an employee from the list)
-    await supabase
-      .from('employees')
-      .update({ pickup_id: null })
-      .eq('pickup_id', pickup.id);
-  
-    // 3. Assign currently selected employees
-    if (selectedIds.length > 0) {
-      const { error: eError } = await supabase
-        .from('employees')
-        .update({ pickup_id: pickup.id })
-        .in('id', selectedIds);
-        
-      if (eError) console.error(eError);
-    }
-  
-    setSaving(false);
-    router.push('/'); // Navigate back to dashboard
-  };
+  useEffect(() => {
+    if (offices.length === 0) fetchOffices();
+    if (drivers.length === 0) fetchDrivers();
+    if (employees.length === 0) fetchEmployees();
+  },[fetchOffices, fetchDrivers, fetchEmployees, offices.length, drivers.length, employees.length]);
 
-  const handleTelegramBroadcast = async () => {
-    setSendingTelegram(true);
-    
-    const driverName = allDrivers.find(d => d.id === formData.driver_id)?.full_name || "Unassigned";
-    const staffNames = selectedStaffData.map(s => s.full_name);
-  
-    const success = await sendRouteToTelegram({
-      routeName: formData.name || "Unnamed Route",
-      driverName,
-      staffNames,
-      type: formData.type,
-      overtime_type: formData.overtime_type,
-      time: formData.time,
-      shift: formData.shift
-    });
-  
-    if (success) {
-      alert("🚀 Route intel broadcasted to Telegram!");
-    } else {
-      alert("❌ Broadcast failed. Check connection.");
-    }
-    
-    setSendingTelegram(false);
-  };
+  const filteredDrivers = useMemo(() => {
+    return drivers
+    .filter(d => d.location_id === store.formData.location_id)
+    .filter(d => d.full_name.toLowerCase().includes(driverSearch.toLowerCase()));
+  }, [store.formData.location_id, drivers, driverSearch]);
+
+  const filteredEmployees = useMemo(() => {
+    return employees
+    .filter(e => e.location_id === store.formData.location_id)
+    .filter(e => e.full_name.toLowerCase().includes(passengerSearch.toLowerCase()));
+  },[store.formData.location_id, employees, passengerSearch]);
 
   const handleDiscard = () => {
-    const isDirty = formData.name || formData.location_id || formData.driver_id || selectedIds.length > 0;
+    const isDirty = store.formData.name || store.formData.location_id || store.formData.driver_id || store.selectedIds.length > 0;
     
     if (isDirty) {
       setShowDiscardConfirm(true);
@@ -178,29 +83,9 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
     router.push('/');
   };
 
-  // Filtering Logic
-  const filteredDrivers = useMemo(() => {
-    return allDrivers
-      .filter(d => d.location_id === formData.location_id)
-      .filter(d => d.full_name.toLowerCase().includes(driverSearch.toLowerCase()));
-  }, [formData.location_id, allDrivers, driverSearch]);
-  
-  const filteredEmployees = useMemo(() => {
-    return allEmployees
-      .filter(e => e.location_id === formData.location_id)
-      .filter(e => 
-        e.full_name.toLowerCase().includes(passengerSearch.toLowerCase()) ||
-        e.role?.toLowerCase().includes(passengerSearch.toLowerCase())
-      );
-  }, [formData.location_id, allEmployees, passengerSearch]);
+  const selectedStaffData = employees.filter(e => store.selectedIds.includes(e.id));
 
-  const selectedStaffData = allEmployees.filter(e => selectedIds.includes(e.id));
-
-  const toggleEmployee = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  };
-
-  if (loading) return <div className="h-screen flex items-center justify-center bg-[#060608] text-indigo-500 text-xl font-black animate-pulse uppercase">Initializing Core...</div>
+  if (store.loading) return <div className="h-screen flex items-center justify-center bg-[#060608] text-indigo-500 text-xl font-black animate-pulse uppercase">Initializing Core...</div>
 
   return (
     <div className="min-h-screen bg-[#060608] text-slate-200 font-sans selection:bg-indigo-500/30">
@@ -234,11 +119,11 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
           </button>
           <button 
             onClick={handleFinalize} 
-            disabled={saving || !formData.name || !formData.location_id}
+            disabled={store.saving || !store.formData.name || !store.formData.location_id}
             className="flex-[2] sm:flex-none px-6 py-2.5 bg-indigo-600 disabled:bg-slate-800 text-white font-bold text-[10px] rounded-xl shadow-lg shadow-indigo-600/20 transition-all uppercase tracking-widest flex items-center justify-center gap-2 group"
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            <span className="whitespace-nowrap">{saving ? 'Saving...' : 'Finalize'}</span>
+            {store.saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            <span className="whitespace-nowrap">{store.saving ? 'Saving...' : 'Finalize'}</span>
           </button>
         </div>
       </nav>
@@ -257,7 +142,7 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                   <div>
                     <span className="bg-indigo-600/10 text-indigo-400 text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest">Live Summary</span>
                     <h3 className="text-xl md:text-3xl font-black text-white mt-3 tracking-tighter">
-                      {formData.name || 'Untitled Route'}
+                      {store.formData.name || 'Untitled Route'}
                     </h3>
                   </div>
                   <div className="w-10 h-10 md:w-14 md:h-14 bg-slate-950 border border-slate-800 rounded-xl md:rounded-2xl flex items-center justify-center text-slate-400 flex-shrink-0">
@@ -276,12 +161,12 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                     <div className="flex-1 space-y-4">
                       <div>
                         <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Pickup</p>
-                        <p className="text-sm md:text-base font-bold text-white truncate">{formData.name || 'Set Pickup Point...'}</p>
+                        <p className="text-sm md:text-base font-bold text-white truncate">{store.formData.name || 'Set Pickup Point...'}</p>
                       </div>
                       <div>
                         <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Hub</p>
                         <p className="text-sm md:text-base font-bold text-slate-400 truncate">
-                          {offices.find((o:any) => o.id === formData.location_id)?.location_name || 'Await Destination...'}
+                          {offices.find((o:any) => o.id === store.formData.location_id)?.location_name || 'Await Destination...'}
                         </p>
                       </div>
                     </div>
@@ -290,7 +175,7 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                   <div className="pt-6 border-t border-slate-800/60 hidden md:block">
                     <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-4 flex justify-between">
                       <span>Assigned Manifest</span>
-                      <span className="text-indigo-400">{selectedIds.length} Personnel</span>
+                      <span className="text-indigo-400">{store.selectedIds.length} Personnel</span>
                     </p>
                     <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
                       {selectedStaffData.length > 0 ? (
@@ -311,14 +196,14 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                   <div className="mt-8 pt-6 border-t border-slate-800/60">
                     <button
                       onClick={handleTelegramBroadcast}
-                      disabled={sendingTelegram || !formData.name || selectedIds.length === 0}
+                      disabled={store.sendingTelegram || !store.formData.name || store.selectedIds.length === 0}
                       className="w-full relative group overflow-hidden rounded-2xl p-px disabled:opacity-50 disabled:grayscale transition-all"
                     >
                       {/* Animated Gradient Border */}
                       <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 animate-gradient-x group-hover:scale-105 transition-transform duration-500" />
     
                       <div className="relative bg-slate-900 rounded-[calc(1rem-1px)] p-4 flex items-center justify-center gap-3 transition-colors group-hover:bg-slate-900/80">
-                        {sendingTelegram ? (
+                        {store.sendingTelegram ? (
                           <Loader2 size={18} className="animate-spin text-blue-400" />
                         ) : (
                           <Send size={18} className="text-blue-400 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
@@ -365,19 +250,19 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Pickup Point</label>
                 <input 
                   type="text"
-                  value={formData.name || ''}
+                  value={store.formData.name || ''}
                   placeholder="e.g. Sarbet Junction"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-indigo-500/20 text-sm text-white"
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onChange={(e) => store.updateFormField('name', e.target.value) }
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Destination Hub</label>
                 <div className="relative">
                   <select 
-                    value={formData.location_id || ''}
+                    value={store.formData.location_id || ''}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-sm text-white appearance-none outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    onChange={(e) => setFormData({...formData, location_id: e.target.value})}
+                    onChange={(e) => store.updateFormField('location_id', e.target.value)}
                   >
                     <option value="">Select an office</option>
                     {offices.map((o:any) => <option key={o.id} value={o.id}>{o.location_name}</option>)}
@@ -395,9 +280,9 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                 {['entry', 'exit'].map((t) => (
                   <button
                     key={t}
-                    onClick={() => setFormData({...formData, type: t})}
+                    onClick={() => store.updateFormField('type', t)}
                     className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                      formData.type === t ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
+                      store.formData.type === t ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
                     }`}
                   >
                     {t.toUpperCase()}
@@ -413,9 +298,9 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                 {['AM', 'PM'].map((s) => (
                   <button
                     key={s}
-                    onClick={() => setFormData({...formData, shift: s})}
+                    onClick={() => store.updateFormField('shift', s)}
                     className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                      formData.shift === s ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
+                      store.formData.shift === s ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
                     }`}
                   >
                     {s}
@@ -431,8 +316,8 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                 <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
                   type="time" 
-                  value={formData.time}
-                  onChange={(e) => setFormData({...formData, time: e.target.value})}
+                  value={store.formData.time}
+                  onChange={(e) => store.updateFormField('time', e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
@@ -442,8 +327,8 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
             <div className="space-y-2 col-span-1">
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Day Type</label>
               <select 
-                value={formData.overtime_type}
-                onChange={(e) => setFormData({...formData, overtime_type: e.target.value})}
+                value={store.formData.overtime_type}
+                onChange={(e) => store.updateFormField('overtime_type', e.target.value)}
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
               >
                 <option value="normal">Weekday (Normal)</option>
@@ -454,7 +339,7 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
           </div>
 
           {/* Section 2: Driver Assignment */}
-          <section className={`transition-all duration-500 ${formData.location_id ? 'opacity-100' : 'opacity-40 grayscale pointer-events-none'}`}>
+          <section className={`transition-all duration-500 ${store.formData.location_id ? 'opacity-100' : 'opacity-40 grayscale pointer-events-none'}`}>
             <div className="bg-slate-900/20 border border-slate-800/60 rounded-[2rem] p-6 md:p-8 space-y-6 shadow-xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
@@ -481,12 +366,12 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                 {filteredDrivers.map((driver:any) => {
-                  const isActive = formData.driver_id === driver.id;
-                  const isBusy = driverIds.includes(driver.id);
+                  const isActive = store.formData.driver_id === driver.id;
+                  const isBusy = store.driverIds.includes(driver.id);
                   return (
                     <div 
                       key={driver.id}
-                      onClick={() => !isBusy && setFormData({...formData, driver_id: driver.id})}
+                      onClick={() => !isBusy && store.updateFormField('driver_id', driver.id)}
                       className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 ${
                         isActive ? 'bg-blue-600/20 border-blue-500 shadow-lg shadow-blue-500/10' : 
                         isBusy ? 'bg-slate-900/40 border-slate-800 opacity-50 cursor-not-allowed' : 
@@ -509,7 +394,7 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
           </section>
 
           {/* Section 3: Passenger Manifest */}
-          <section className={`transition-all duration-500 ${formData.location_id ? 'opacity-100' : 'opacity-40 grayscale pointer-events-none'}`}>
+          <section className={`transition-all duration-500 ${store.formData.location_id ? 'opacity-100' : 'opacity-40 grayscale pointer-events-none'}`}>
             <div className="bg-slate-900/20 border border-slate-800/60 rounded-[2rem] p-6 md:p-8 space-y-6">
               <div className="flex flex-col lg:flex-row justify-between gap-6">
                 <div className="flex items-center gap-4">
@@ -518,7 +403,7 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
                   </div>
                   <div>
                     <h2 className="text-base md:text-lg font-bold text-white">Passenger Manifest</h2>
-                    <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest">Select Staff ({selectedIds.length})</p>
+                    <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest">Select Staff ({store.selectedIds.length})</p>
                   </div>
                 </div>
 
@@ -536,12 +421,12 @@ const ManagePickupPage = ({ params: paramsPromise }: { params: Promise<{ id: str
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
                 {filteredEmployees.map((emp:any) => {
-                  const isActive = selectedIds.includes(emp.id);
+                  const isActive = store.selectedIds.includes(emp.id);
                   const isBusy = emp.pickup_id && emp.pickup_id !== params.id;
                   return (
                     <div 
                       key={emp.id}
-                      onClick={() => !isBusy && toggleEmployee(emp.id)}
+                      onClick={() => !isBusy && store.toggleEmployee(emp.id)}
                       className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer relative ${
                         isActive ? 'bg-indigo-600 border-indigo-400' : 
                         isBusy ? 'bg-slate-900/40 border-slate-800 opacity-50 cursor-not-allowed' : 
